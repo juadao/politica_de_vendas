@@ -1,1 +1,790 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Vendas e Simulador de Descontos — Clínica</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+  <div id="root"></div>
 
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    const STORAGE_KEY = "clinica_politica_vendas_v1";
+
+    const DEFAULT_PARAMS = {
+      irPct: 17.0,
+      repassePct: 20.0,
+      tetoAVistaPct: 15.0,
+      operadoras: {
+        capim: {
+          nome: "Capim",
+          parcelaReferencia: 21,
+          taxaMaximaReferenciaPct: 18.02,
+          travaDescontoInicioParcelas: 12,
+          modalidades: [
+            { id: "dinheiro", label: "Dinheiro", parcelas: 1, tipo: "avista_dinheiro", taxaPct: 0.0 },
+            { id: "pix", label: "PIX", parcelas: 1, tipo: "avista_pix", taxaPct: 0.49 },
+            { id: "debito", label: "Débito", parcelas: 1, tipo: "debito", taxaPct: 1.39 },
+            { id: "cred_1", label: "Crédito À vista (1x)", parcelas: 1, tipo: "credito", taxaPct: 2.93 },
+            { id: "cred_2", label: "Crédito 2x", parcelas: 2, tipo: "credito", taxaPct: 5.38 },
+            { id: "cred_3", label: "Crédito 3x", parcelas: 3, tipo: "credito", taxaPct: 5.77 },
+            { id: "cred_4", label: "Crédito 4x", parcelas: 4, tipo: "credito", taxaPct: 6.46 },
+            { id: "cred_5", label: "Crédito 5x", parcelas: 5, tipo: "credito", taxaPct: 7.05 },
+            { id: "cred_6", label: "Crédito 6x", parcelas: 6, tipo: "credito", taxaPct: 7.44 },
+            { id: "cred_7", label: "Crédito 7x", parcelas: 7, tipo: "credito", taxaPct: 8.22 },
+            { id: "cred_8", label: "Crédito 8x", parcelas: 8, tipo: "credito", taxaPct: 8.71 },
+            { id: "cred_9", label: "Crédito 9x", parcelas: 9, tipo: "credito", taxaPct: 9.10 },
+            { id: "cred_10", label: "Crédito 10x", parcelas: 10, tipo: "credito", taxaPct: 8.75 },
+            { id: "cred_11", label: "Crédito 11x", parcelas: 11, tipo: "credito", taxaPct: 9.27 },
+            { id: "cred_12", label: "Crédito 12x", parcelas: 12, tipo: "credito", taxaPct: 9.79 },
+            { id: "cred_13", label: "Crédito 13x", parcelas: 13, tipo: "credito", taxaPct: 12.63 },
+            { id: "cred_14", label: "Crédito 14x", parcelas: 14, tipo: "credito", taxaPct: 13.61 },
+            { id: "cred_15", label: "Crédito 15x", parcelas: 15, tipo: "credito", taxaPct: 14.59 },
+            { id: "cred_16", label: "Crédito 16x", parcelas: 16, tipo: "credito", taxaPct: 15.18 },
+            { id: "cred_17", label: "Crédito 17x", parcelas: 17, tipo: "credito", taxaPct: 15.57 },
+            { id: "cred_18", label: "Crédito 18x", parcelas: 18, tipo: "credito", taxaPct: 16.16 },
+            { id: "cred_19", label: "Crédito 19x", parcelas: 19, tipo: "credito", taxaPct: 16.85 },
+            { id: "cred_20", label: "Crédito 20x", parcelas: 20, tipo: "credito", taxaPct: 17.53 },
+            { id: "cred_21", label: "Crédito 21x", parcelas: 21, tipo: "credito", taxaPct: 18.02 }
+          ]
+        },
+        operadora2: {
+          nome: "Operadora 2",
+          parcelaReferencia: 12,
+          taxaMaximaReferenciaPct: 12.22,
+          travaDescontoInicioParcelas: null,
+          modalidades: [
+            { id: "op2_dinheiro", label: "Dinheiro", parcelas: 1, tipo: "avista_dinheiro", taxaPct: 0.0 },
+            { id: "op2_pix", label: "PIX", parcelas: 1, tipo: "avista_pix", taxaPct: 0.49 },
+            { id: "op2_debito", label: "Débito", parcelas: 1, tipo: "debito", taxaPct: 1.39 },
+            ...Array.from({ length: 12 }, (_, idx) => {
+              const p = idx + 1;
+              const taxa = Number((2.8 + idx * 0.85).toFixed(2));
+              return {
+                id: `op2_cred_${p}`,
+                label: p === 1 ? "Crédito À vista (1x)" : `Crédito ${p}x`,
+                parcelas: p,
+                tipo: "credito",
+                taxaPct: taxa
+              };
+            })
+          ]
+        }
+      }
+    };
+
+    const fmtBRL = (v) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(v) ? v : 0);
+
+    const fmtPct = (v) =>
+      `${(Number.isFinite(v) ? v : 0).toFixed(2).replace(".", ",")}%`;
+
+    function calcularModalidade(valorTabela, modalidade, opConfig, params) {
+      const taxa = Math.max(0, Math.min(99.9, Number(modalidade.taxaPct) || 0));
+      const taxaRef = Math.max(0, Math.min(99.9, Number(opConfig.taxaMaximaReferenciaPct) || 0));
+      const liquidoGarantidoRatio = 1 - taxaRef / 100;
+      const liquidoPorRealCobrado = 1 - taxa / 100;
+
+      const travadoPorParcela =
+        opConfig.travaDescontoInicioParcelas != null &&
+        modalidade.tipo === "credito" &&
+        modalidade.parcelas >= opConfig.travaDescontoInicioParcelas;
+
+      let descontoMaxPct = 0;
+      if (!travadoPorParcela && liquidoPorRealCobrado > 0) {
+        const eqPct = Math.max(0, (1 - liquidoGarantidoRatio / liquidoPorRealCobrado) * 100);
+        const ehAVista = modalidade.tipo === "avista_dinheiro" || modalidade.tipo === "avista_pix";
+        descontoMaxPct = ehAVista ? Math.min(eqPct, Number(params.tetoAVistaPct) || 15) : eqPct;
+      }
+
+      const descontoMaxValor = valorTabela * (descontoMaxPct / 100);
+      const precoMinimo = Math.max(0, valorTabela - descontoMaxValor);
+      const valorParcelaMin = modalidade.parcelas > 0 ? precoMinimo / modalidade.parcelas : precoMinimo;
+
+      const taxaMaquininha = precoMinimo * (taxa / 100);
+      const liquidoPosMaquininha = precoMinimo - taxaMaquininha;
+      const irValor = precoMinimo * ((Number(params.irPct) || 0) / 100);
+      const repasseValor = precoMinimo * ((Number(params.repassePct) || 0) / 100);
+      const sobraClinica = liquidoPosMaquininha - irValor - repasseValor;
+      const margemSobreTabelaPct = valorTabela > 0 ? (sobraClinica / valorTabela) * 100 : 0;
+
+      let statusTexto = `Liberado (até ${fmtPct(descontoMaxPct)})`;
+      let statusTipo = "ok";
+      if (travadoPorParcela) {
+        statusTexto = `Sem desconto (trava ${opConfig.travaDescontoInicioParcelas}x+)`;
+        statusTipo = "lock";
+      } else if (descontoMaxPct <= 0.001) {
+        statusTexto = "Sem desconto";
+        statusTipo = "lock";
+      }
+
+      return {
+        descontoMaxPct,
+        descontoMaxValor,
+        precoMinimo,
+        valorParcelaMin,
+        taxaMaquininha,
+        liquidoPosMaquininha,
+        irValor,
+        repasseValor,
+        sobraClinica,
+        margemSobreTabelaPct,
+        travadoPorParcela,
+        statusTexto,
+        statusTipo
+      };
+    }
+
+    function calcularNegociacaoReal(valorTabela, valorCobrado, modalidade, opConfig, params) {
+      const calcMin = calcularModalidade(valorTabela, modalidade, opConfig, params);
+      const taxa = Math.max(0, Math.min(99.9, Number(modalidade.taxaPct) || 0));
+
+      const descontoConcedidoValor = valorTabela - valorCobrado;
+      const descontoConcedidoPct = valorTabela > 0 ? (descontoConcedidoValor / valorTabela) * 100 : 0;
+
+      const taxaMaquininha = valorCobrado * (taxa / 100);
+      const liquidoPosMaquininha = valorCobrado - taxaMaquininha;
+      const irValor = valorCobrado * ((Number(params.irPct) || 0) / 100);
+      const repasseValor = valorCobrado * ((Number(params.repassePct) || 0) / 100);
+      const sobraClinicaReal = liquidoPosMaquininha - irValor - repasseValor;
+
+      const diferencaVsPiso = sobraClinicaReal - calcMin.sobraClinica;
+      const margemRealSobreTabelaPct = valorTabela > 0 ? (sobraClinicaReal / valorTabela) * 100 : 0;
+
+      let status = "dentro_politica";
+      if (valorCobrado > valorTabela + 0.009) status = "acima_tabela";
+      else if (valorCobrado < calcMin.precoMinimo - 0.009) status = "abaixo_minimo";
+      else if (Math.abs(valorCobrado - calcMin.precoMinimo) <= 0.009) status = "no_limite";
+
+      return {
+        calcMin,
+        descontoConcedidoValor,
+        descontoConcedidoPct,
+        taxaMaquininha,
+        liquidoPosMaquininha,
+        irValor,
+        repasseValor,
+        sobraClinicaReal,
+        diferencaVsPiso,
+        margemRealSobreTabelaPct,
+        status
+      };
+    }
+
+    function App() {
+      const [params, setParams] = useState(() => {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            return {
+              ...DEFAULT_PARAMS,
+              ...parsed,
+              operadoras: {
+                capim: { ...DEFAULT_PARAMS.operadoras.capim, ...(parsed.operadoras?.capim || {}) },
+                operadora2: { ...DEFAULT_PARAMS.operadoras.operadora2, ...(parsed.operadoras?.operadora2 || {}) }
+              }
+            };
+          }
+        } catch (_) {}
+        return DEFAULT_PARAMS;
+      });
+
+      useEffect(() => {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
+        } catch (_) {}
+      }, [params]);
+
+      const [aba, setAba] = useState("balcao");
+      const [operadoraId, setOperadoraId] = useState("capim");
+      const [valorTabela, setValorTabela] = useState(1000);
+      const [modalidadeId, setModalidadeId] = useState("cred_3");
+      const [valorPagoPaciente, setValorPagoPaciente] = useState(920);
+      const [opEditId, setOpEditId] = useState("capim");
+
+      const opAtual = params.operadoras[operadoraId] || params.operadoras.capim;
+      const modalidadeAtual =
+        opAtual.modalidades.find((m) => m.id === modalidadeId) || opAtual.modalidades[0];
+
+      const handleTrocarOperadora = (novaOpId) => {
+        setOperadoraId(novaOpId);
+        const novaOp = params.operadoras[novaOpId];
+        if (novaOp && !novaOp.modalidades.some((m) => m.id === modalidadeId)) {
+          setModalidadeId(novaOp.modalidades[0]?.id || "");
+        }
+      };
+
+      const simulacaoBalcao = useMemo(
+        () => calcularModalidade(Number(valorTabela) || 0, modalidadeAtual, opAtual, params),
+        [valorTabela, modalidadeAtual, opAtual, params]
+      );
+
+      const tabelaComparativa = useMemo(
+        () =>
+          opAtual.modalidades.map((mod) => ({
+            mod,
+            res: calcularModalidade(Number(valorTabela) || 0, mod, opAtual, params)
+          })),
+        [valorTabela, opAtual, params]
+      );
+
+      const simulacaoReal = useMemo(
+        () =>
+          calcularNegociacaoReal(
+            Number(valorTabela) || 0,
+            Number(valorPagoPaciente) || 0,
+            modalidadeAtual,
+            opAtual,
+            params
+          ),
+        [valorTabela, valorPagoPaciente, modalidadeAtual, opAtual, params]
+      );
+
+      const atualizarTaxaModalidade = (opKey, modId, novaTaxa) => {
+        const taxaNum = Math.max(0, Math.min(99.9, Number(novaTaxa) || 0));
+        setParams((prev) => ({
+          ...prev,
+          operadoras: {
+            ...prev.operadoras,
+            [opKey]: {
+              ...prev.operadoras[opKey],
+              modalidades: prev.operadoras[opKey].modalidades.map((m) =>
+                m.id === modId ? { ...m, taxaPct: taxaNum } : m
+              )
+            }
+          }
+        }));
+      };
+
+      const restaurarPadrao = () => {
+        setParams(DEFAULT_PARAMS);
+        setOperadoraId("capim");
+        setModalidadeId("cred_3");
+        setValorTabela(1000);
+        setValorPagoPaciente(920);
+        localStorage.removeItem(STORAGE_KEY);
+      };
+
+      const opEdit = params.operadoras[opEditId] || params.operadoras.capim;
+
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-900 pb-12">
+          <header className="bg-slate-900 text-white border-b border-slate-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                  Clínica Odontológica • Gestão Comercial e Margem Líquida
+                </div>
+                <h1 className="text-xl sm:text-2xl font-bold mt-0.5">
+                  Política de Vendas e Simulador de Descontos
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-300 mt-1">
+                  Deduções diretas: IR {fmtPct(params.irPct)} + Repasse {fmtPct(params.repassePct)} ({fmtPct((params.irPct || 0) + (params.repassePct || 0))}) • Teto à vista: {fmtPct(params.tetoAVistaPct)} • Capim trava 12x–21x
+                </p>
+              </div>
+              <nav className="flex flex-wrap gap-2">
+                {[
+                  { id: "balcao", label: "Simulador de Balcão" },
+                  { id: "real", label: "Simulador Real" },
+                  { id: "parametros", label: "Taxas e Parâmetros" }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setAba(item.id)}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                      aba === item.id
+                        ? "bg-emerald-500 text-slate-950 shadow-sm"
+                        : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                  Valor de Tabela (R$)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={valorTabela}
+                  onChange={(e) => setValorTabela(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                  Operadora / Meio
+                </label>
+                <select
+                  value={operadoraId}
+                  onChange={(e) => handleTrocarOperadora(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="capim">Capim (Ref. {opAtual.parcelaReferencia}x — {fmtPct(params.operadoras.capim.taxaMaximaReferenciaPct)})</option>
+                  <option value="operadora2">Operadora 2 (Ref. {params.operadoras.operadora2.parcelaReferencia}x — {fmtPct(params.operadoras.operadora2.taxaMaximaReferenciaPct)})</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                  Forma de Pagamento / Parcelas
+                </label>
+                <select
+                  value={modalidadeAtual.id}
+                  onChange={(e) => setModalidadeId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {opAtual.modalidades.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} (Taxa {fmtPct(m.taxaPct)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 flex flex-col justify-center">
+                <span className="text-xs font-medium text-slate-500">Taxa da modalidade</span>
+                <span className="text-lg font-bold text-slate-900">{fmtPct(modalidadeAtual.taxaPct)}</span>
+                <span className="text-xs text-slate-500">
+                  Benchmark {opAtual.nome}: {opAtual.parcelaReferencia}x ({fmtPct(opAtual.taxaMaximaReferenciaPct)})
+                </span>
+              </div>
+            </section>
+
+            {aba === "balcao" && (
+              <div className="space-y-6">
+                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Valor Mínimo a Cobrar</div>
+                    <div className="text-2xl font-extrabold text-slate-900 mt-1">
+                      {fmtBRL(simulacaoBalcao.precoMinimo)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Parcela mín.: {fmtBRL(simulacaoBalcao.valorParcelaMin)} ({modalidadeAtual.parcelas}x)
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Desconto Máximo Permitido</div>
+                    <div className="text-2xl font-extrabold text-emerald-700 mt-1">
+                      {fmtPct(simulacaoBalcao.descontoMaxPct)}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      Economia até {fmtBRL(simulacaoBalcao.descontoMaxValor)}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Líquido Pós-Maquininha</div>
+                    <div className="text-2xl font-extrabold text-slate-900 mt-1">
+                      {fmtBRL(simulacaoBalcao.liquidoPosMaquininha)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Taxa maquininha: {fmtBRL(simulacaoBalcao.taxaMaquininha)}
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-950 text-white rounded-2xl p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-emerald-300">Sobra Líquida da Clínica</div>
+                    <div className="text-2xl font-extrabold text-emerald-400 mt-1">
+                      {fmtBRL(simulacaoBalcao.sobraClinica)}
+                    </div>
+                    <div className="text-xs text-emerald-200 mt-1">
+                      Margem {fmtPct(simulacaoBalcao.margemSobreTabelaPct)} s/ tabela (após IR e repasse)
+                    </div>
+                  </div>
+                </section>
+
+                <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <h2 className="text-base font-bold text-slate-900 mb-3">
+                    Decomposição no Preço Mínimo ({modalidadeAtual.label})
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-xs text-slate-500">Cobrado do Paciente</div>
+                      <div className="font-bold text-slate-900 mt-0.5">{fmtBRL(simulacaoBalcao.precoMinimo)}</div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-xs text-slate-500">(-) Maquininha ({fmtPct(modalidadeAtual.taxaPct)})</div>
+                      <div className="font-bold text-rose-700 mt-0.5">-{fmtBRL(simulacaoBalcao.taxaMaquininha)}</div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-xs text-slate-500">(-) IR ({fmtPct(params.irPct)})</div>
+                      <div className="font-bold text-rose-700 mt-0.5">-{fmtBRL(simulacaoBalcao.irValor)}</div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-xs text-slate-500">(-) Repasse ({fmtPct(params.repassePct)})</div>
+                      <div className="font-bold text-rose-700 mt-0.5">-{fmtBRL(simulacaoBalcao.repasseValor)}</div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                      <div className="text-xs text-emerald-800 font-semibold">(=) Sobra da Clínica</div>
+                      <div className="font-extrabold text-emerald-900 mt-0.5">{fmtBRL(simulacaoBalcao.sobraClinica)}</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        Comparativo Completo — {opAtual.nome}
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Valores calculados sobre {fmtBRL(Number(valorTabela) || 0)} de tabela
+                      </p>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                          <th className="py-2.5 px-3 font-semibold">Modalidade</th>
+                          <th className="py-2.5 px-3 font-semibold">Taxa</th>
+                          <th className="py-2.5 px-3 font-semibold">Desc. Máx.</th>
+                          <th className="py-2.5 px-3 font-semibold">Preço Mín.</th>
+                          <th className="py-2.5 px-3 font-semibold">Parcela Mín.</th>
+                          <th className="py-2.5 px-3 font-semibold">Líq. Maq.</th>
+                          <th className="py-2.5 px-3 font-semibold">IR ({fmtPct(params.irPct)})</th>
+                          <th className="py-2.5 px-3 font-semibold">Repasse ({fmtPct(params.repassePct)})</th>
+                          <th className="py-2.5 px-3 font-semibold">Sobra Clínica</th>
+                          <th className="py-2.5 px-3 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {tabelaComparativa.map(({ mod, res }) => {
+                          const selecionado = mod.id === modalidadeAtual.id;
+                          return (
+                            <tr
+                              key={mod.id}
+                              onClick={() => setModalidadeId(mod.id)}
+                              className={`cursor-pointer transition ${
+                                selecionado ? "bg-emerald-50/80 font-medium" : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-slate-900">
+                                {mod.label}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">{fmtPct(mod.taxaPct)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap text-emerald-700 font-semibold">
+                                {fmtPct(res.descontoMaxPct)} ({fmtBRL(res.descontoMaxValor)})
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap font-bold">{fmtBRL(res.precoMinimo)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">{fmtBRL(res.valorParcelaMin)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">{fmtBRL(res.liquidoPosMaquininha)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap text-slate-600">{fmtBRL(res.irValor)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap text-slate-600">{fmtBRL(res.repasseValor)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap font-bold text-slate-900">
+                                {fmtBRL(res.sobraClinica)}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                    res.statusTipo === "ok"
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-amber-100 text-amber-900"
+                                  }`}
+                                >
+                                  {res.statusTexto}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {aba === "real" && (
+              <div className="space-y-6">
+                <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                      Valor que o Paciente Vai Pagar (R$)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={valorPagoPaciente}
+                      onChange={(e) => setValorPagoPaciente(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-xs text-slate-500">Desconto Concedido na Negociação</div>
+                    <div className="text-lg font-extrabold text-slate-900 mt-0.5">
+                      {fmtPct(simulacaoReal.descontoConcedidoPct)}{" "}
+                      <span className="text-sm font-semibold text-slate-600">
+                        ({fmtBRL(simulacaoReal.descontoConcedidoValor)})
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-xs text-slate-500">Mínimo Autorizado pela Política</div>
+                    <div className="text-lg font-extrabold text-slate-900 mt-0.5">
+                      {fmtBRL(simulacaoReal.calcMin.precoMinimo)}{" "}
+                      <span className="text-xs font-semibold text-slate-500">
+                        (máx. {fmtPct(simulacaoReal.calcMin.descontoMaxPct)})
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                {simulacaoReal.status === "abaixo_minimo" && (
+                  <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 text-rose-950 p-4 text-sm font-medium">
+                    <strong>Atenção — Valor abaixo do mínimo da política:</strong> O valor cobrado ({fmtBRL(Number(valorPagoPaciente) || 0)}) está{" "}
+                    <strong>{fmtBRL(simulacaoReal.calcMin.precoMinimo - (Number(valorPagoPaciente) || 0))}</strong> abaixo do mínimo permitido ({fmtBRL(simulacaoReal.calcMin.precoMinimo)}), reduzindo a sobra líquida da clínica em{" "}
+                    <strong>{fmtBRL(Math.abs(simulacaoReal.diferencaVsPiso))}</strong> em relação ao piso protegido.
+                  </div>
+                )}
+
+                {simulacaoReal.status === "acima_tabela" && (
+                  <div className="rounded-2xl border-2 border-teal-300 bg-teal-50 text-teal-950 p-4 text-sm font-medium">
+                    <strong>Cobrança acima da tabela:</strong> Valor cobrado acima do preço de tabela em{" "}
+                    <strong>{fmtBRL((Number(valorPagoPaciente) || 0) - (Number(valorTabela) || 0))}</strong>, elevando a sobra líquida da clínica para{" "}
+                    <strong>{fmtBRL(simulacaoReal.sobraClinicaReal)}</strong>.
+                  </div>
+                )}
+
+                {(simulacaoReal.status === "dentro_politica" || simulacaoReal.status === "no_limite") && (
+                  <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 text-emerald-950 p-4 text-sm font-medium">
+                    <strong>Negociação dentro da política:</strong> Sobra líquida final da clínica de{" "}
+                    <strong>{fmtBRL(simulacaoReal.sobraClinicaReal)}</strong> ({fmtPct(simulacaoReal.margemRealSobreTabelaPct)} sobre a tabela).
+                    {simulacaoReal.diferencaVsPiso > 0.009 && (
+                      <>
+                        {" "}Ganho extra de <strong>+{fmtBRL(simulacaoReal.diferencaVsPiso)}</strong> na clínica por não conceder o desconto máximo permitido.
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Valor Cobrado do Paciente</div>
+                    <div className="text-2xl font-extrabold text-slate-900 mt-1">
+                      {fmtBRL(Number(valorPagoPaciente) || 0)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Tabela: {fmtBRL(Number(valorTabela) || 0)} • {modalidadeAtual.label}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Líquido Pós-Maquininha</div>
+                    <div className="text-2xl font-extrabold text-slate-900 mt-1">
+                      {fmtBRL(simulacaoReal.liquidoPosMaquininha)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Taxa maquininha: {fmtBRL(simulacaoReal.taxaMaquininha)} ({fmtPct(modalidadeAtual.taxaPct)})
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Deduções (IR + Repasse)</div>
+                    <div className="text-2xl font-extrabold text-rose-700 mt-1">
+                      {fmtBRL(simulacaoReal.irValor + simulacaoReal.repasseValor)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      IR: {fmtBRL(simulacaoReal.irValor)} • Repasse: {fmtBRL(simulacaoReal.repasseValor)}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-emerald-300">Sobra Líquida que Entra na Clínica</div>
+                    <div className="text-2xl font-extrabold text-emerald-400 mt-1">
+                      {fmtBRL(simulacaoReal.sobraClinicaReal)}
+                    </div>
+                    <div className="text-xs text-slate-300 mt-1">
+                      {simulacaoReal.diferencaVsPiso >= 0
+                        ? `+${fmtBRL(simulacaoReal.diferencaVsPiso)} vs. piso da política`
+                        : `${fmtBRL(simulacaoReal.diferencaVsPiso)} vs. piso da política`}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {aba === "parametros" && (
+              <div className="space-y-6">
+                <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">Parâmetros Globais da Clínica</h2>
+                      <p className="text-xs text-slate-500">Salvos automaticamente no navegador</p>
+                    </div>
+                    <button
+                      onClick={restaurarPadrao}
+                      className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300"
+                    >
+                      Restaurar Valores Padrão
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                        IR / Tributos (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={params.irPct}
+                        onChange={(e) => setParams((p) => ({ ...p, irPct: Number(e.target.value) || 0 }))}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                        Repasse Profissional (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={params.repassePct}
+                        onChange={(e) => setParams((p) => ({ ...p, repassePct: Number(e.target.value) || 0 }))}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                        Teto Máximo à Vista — Dinheiro / PIX (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={params.tetoAVistaPct}
+                        onChange={(e) => setParams((p) => ({ ...p, tetoAVistaPct: Number(e.target.value) || 0 }))}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 className="text-base font-bold text-slate-900">Taxas por Modalidade</h2>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setOpEditId("capim")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                          opEditId === "capim" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        Capim
+                      </button>
+                      <button
+                        onClick={() => setOpEditId("operadora2")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                          opEditId === "operadora2" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        Operadora 2
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                        Parcela de Referência ({opEdit.nome})
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={opEdit.parcelaReferencia}
+                        onChange={(e) =>
+                          setParams((prev) => ({
+                            ...prev,
+                            operadoras: {
+                              ...prev.operadoras,
+                              [opEditId]: {
+                                ...prev.operadoras[opEditId],
+                                parcelaReferencia: Math.max(1, Number(e.target.value) || 1)
+                              }
+                            }
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                        Taxa Máxima de Referência (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={opEdit.taxaMaximaReferenciaPct}
+                        onChange={(e) =>
+                          setParams((prev) => ({
+                            ...prev,
+                            operadoras: {
+                              ...prev.operadoras,
+                              [opEditId]: {
+                                ...prev.operadoras[opEditId],
+                                taxaMaximaReferenciaPct: Number(e.target.value) || 0
+                              }
+                            }
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {opEdit.modalidades.map((mod) => (
+                      <div
+                        key={mod.id}
+                        className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <span className="text-sm font-semibold text-slate-800">{mod.label}</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={mod.taxaPct}
+                            onChange={(e) => atualizarTaxaModalidade(opEditId, mod.id, e.target.value)}
+                            className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-bold text-right"
+                          />
+                          <span className="text-xs font-semibold text-slate-500">%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
